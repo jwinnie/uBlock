@@ -142,7 +142,7 @@ body.off #switch .fa-icon {
 .statValue {
     margin: 0;
     }
-#switch-container {
+#switchContainer {
     width: 100%;
     text-align: center
     }
@@ -165,14 +165,14 @@ body.off #switch .fa-icon {
 .off #switch {
     background-color: grey;
     }
-#switch-slider {
+#switchSlider {
     border-radius: 100%;
     background-color: white;
     width: 20px;
     height: 20px;
     float: right
     }
-.off #switch-slider {
+.off #switchSlider {
     float: left
     }
 #extraTools {
