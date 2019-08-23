@@ -147,17 +147,33 @@ body.off #switch .fa-icon {
     text-align: center
     }
 #switch {
-    background-color: green;
+    background-color: #008000;
     border-radius: 20px;
     border: none;
-    width: 50%;
-    height: 20px
+    width: 30%;
+    height: 30px;
+    padding-left: 5px;
+    padding-right: 5px
+    }
+#switch::-moz-focus-inner {
+    border: 0;
+    }
+#switch:focus {
+    outline: none;
+    background-color: #006600
+    }
+.off #switch {
+    background-color: grey;
     }
 #switch-slider {
     border-radius: 100%;
     background-color: white;
-    width: 10px;
-    height: 10px
+    width: 20px;
+    height: 20px;
+    float: right
+    }
+.off #switch-slider {
+    float: left
     }
 #extraTools {
     background-color: #eee;
