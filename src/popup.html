@@ -15,7 +15,11 @@
 <div id="appinfo"><span id="appname">&nbsp;</span>&nbsp;<span id="version">&nbsp;</span></div>
 <div id="panes">
     <div class="tooltipContainer">
-        <p id="switch" role="button" aria-label data-tip-position="under" tabindex="0"><span class="fa-icon">power-off</span></p>
+        <div id="switch-container">
+            <button id="switch" aria-label data-tip-position="under" tabindex="0">
+                <div id="switch-slider"></div>
+            </button>
+        </div>
         <p id="basicTools">
             <span id="gotoZap" class="fa-icon tool" data-i18n-tip="popupTipZapper" data-tip-position="under">bolt</span>
             <span id="gotoPick" class="fa-icon tool" data-i18n-tip="popupTipPicker" data-tip-position="under">eye-dropper</span>
