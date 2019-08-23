@@ -75,6 +75,14 @@
     "message":"Click to enable uBlock₀ for this site.",
     "description":"Message to be read by screen readers"
   },
+  "popupSwitchOnLabel":{
+    "message": "on",
+    "description": "English: on"
+  },
+  "popupSwitchOffLabel":{
+    "message": "off",
+    "description": "English: off"
+  },
   "popupBlockedRequestPrompt":{
     "message":"requests blocked",
     "description":"English: requests blocked"
