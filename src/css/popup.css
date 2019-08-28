@@ -31,15 +31,17 @@ a {
     }
 #appinfo {
     align-items: flex-end;
-    background-color: #444;
+    color: #444;
     border: 0;
-    color: #bbb;
     display: flex;
-    font-size: smaller;
     justify-content: center;
     margin: 0;
-    padding: 1px 0;
+    padding: 8px 0;
     width: 100%;
+    border-bottom: 1px solid #bfbfbf
+    }
+#version {
+    color: #888
     }
 
 #panes {
@@ -237,27 +239,25 @@ body.dirty #refresh:hover {
     }
 
 #tooltip {
-    background-color: #ffffee;
-    border: 1px solid gray;
+    background-color: #404040;
+    color: white;
     border-radius: 3px;
-    box-shadow: 1px 1px 3px gray;
     box-sizing: border-box;
-    color: black;
     cursor: pointer;
     direction: ltr;
-    font: 12px sans-serif;
+    font: 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
     left: 5%;
     line-height: 130%;
     margin: 0.5em 0;
     opacity: 0;
-    padding: 4px 6px;
+    padding: 6px 8px;
     pointer-events: none;
     position: absolute;
     text-align: center;
     visibility: hidden;
     white-space: pre-line;
     width: 90%;
-    z-index: 100;
+    z-index: 100
     }
 body[dir="rtl"] #tooltip {
     direction: rtl;
@@ -275,16 +275,13 @@ body[dir="rtl"] #tooltip {
     margin: 0;
     padding: 0;
     text-align: right;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif
     }
 #firewallContainer > div {
-    background-color: #e6e6e6;
     border: 0;
     direction: ltr;
     margin: 0;
     padding: 0;
-    }
-#firewallContainer > div:hover {
-    background-color: #f0f0f0;
     }
 #firewallContainer > div:first-child ~ div:not([class]) {
     display: none;
@@ -363,9 +360,15 @@ body[dir="rtl"] #tooltip {
 #firewallContainer > div > span[data-acount]::before,
 #firewallContainer > div > span[data-bcount]::after {
     position: absolute;
+    font-size: large;
+    line-height: 100%
     }
 #firewallContainer > div > span[data-acount]::before {
     left: 0.1em;
+    color: rgb(0, 160, 0)
+    }
+#firewallContainer.colorBlind > div > span[data-acount]::before {
+    color: rgb(255, 194, 57)
     }
 #firewallContainer > div > span[data-acount="1"]::before {
     content: '+';
@@ -378,6 +381,10 @@ body[dir="rtl"] #tooltip {
     }
 #firewallContainer > div > span[data-bcount]::after {
     right: 0.1em;
+    color: rgb(192, 0, 0)
+    }
+#firewallContainer.colorBlind > div > span[data-bcount]::before {
+    color: rgb(0, 19, 110)
     }
 #firewallContainer > div > span[data-bcount="1"]::after {
     content: '\2212';
@@ -416,7 +423,7 @@ body.advancedUser #firewallContainer > div > span:first-of-type ~ span {
     left: 0;
     opacity: 0.4;
     position: absolute;
-    width: 7px;
+    width: 100%;
     }
 /**
  Source for color-blind color scheme from https://github.com/WyohKnott:
