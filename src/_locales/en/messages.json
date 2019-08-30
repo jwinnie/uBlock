@@ -231,6 +231,10 @@
     "message":"{{count}} out of {{total}}",
     "description":"appears in popup"
   },
+  "popupTipFirewallPaneToggle":{
+    "message":"Toggle the inspector",
+    "description":"English: Toggle the inspector"
+  },
   "pickerCreate":{
     "message":"Create",
     "description":"English: Create"

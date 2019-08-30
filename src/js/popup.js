@@ -449,6 +449,7 @@ const renderPopup = function() {
                            popupData.netFilteringSwitch === true;
     uDom.nodeFromId('gotoPick').classList.toggle('enabled', canElementPicker);
     uDom.nodeFromId('gotoZap').classList.toggle('enabled', canElementPicker);
+    uDom.nodeFromId('firewallPaneToggle').classList.toggle('enabled', canElementPicker)
 
     let blocked = popupData.pageBlockedRequestCount,
         total = popupData.pageAllowedRequestCount + blocked,
