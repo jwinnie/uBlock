@@ -1150,7 +1150,7 @@ const onHideTooltip = function() {
 uDom('#switch').on('click', toggleNetFilteringSwitch);
 uDom('#gotoZap').on('click', gotoZap);
 uDom('#gotoPick').on('click', gotoPick);
-uDom('h2').on('click', toggleFirewallPane);
+uDom('#firewallPaneToggle').on('click', toggleFirewallPane);
 uDom('.hnSwitch').on('click', toggleHostnameSwitch);
 uDom('#saveRules').on('click', saveFirewallRules);
 uDom('#revertRules').on('click', revertFirewallRules);
