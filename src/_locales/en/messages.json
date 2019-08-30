@@ -104,19 +104,19 @@
     "description":"English: or"
   },
   "popupTipDashboard":{
-    "message":"Open the dashboard",
-    "description":"English: Click to open the dashboard"
+    "message":"Open the settings page",
+    "description":"Opens a separate page where the user can toggle options and customize blocking capabilities"
   },
   "popupTipZapper":{
     "message":"Enter element zapper mode",
     "description":"Tooltip for the element-zapper icon in the popup panel"
   },
   "popupTipPicker":{
-    "message":"Enter element picker mode",
-    "description":"English: Enter element picker mode"
+    "message":"Manually block an element",
+    "description":"Allows the user to manually select an element to be added to the blocking lists"
   },
   "popupTipLog":{
-    "message":"Open the logger",
+    "message":"Open the inspector",
     "description":"Tooltip used for the logger icon in the panel"
   },
   "popupTipNoPopups":{
@@ -232,8 +232,8 @@
     "description":"appears in popup"
   },
   "popupTipFirewallPaneToggle":{
-    "message":"Toggle the inspector",
-    "description":"English: Toggle the inspector"
+    "message":"Show detailed view",
+    "description":"Opens a pane on the popup that shows domains allowed and blocked"
   },
   "pickerCreate":{
     "message":"Create",

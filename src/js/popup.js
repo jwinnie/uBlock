@@ -448,7 +448,7 @@ const renderPopup = function() {
     let canElementPicker = popupData.canElementPicker === true &&
                            popupData.netFilteringSwitch === true;
     uDom.nodeFromId('gotoPick').classList.toggle('enabled', canElementPicker);
-    uDom.nodeFromId('gotoZap').classList.toggle('enabled', canElementPicker);
+    //uDom.nodeFromId('gotoZap').classList.toggle('enabled', canElementPicker);
     uDom.nodeFromId('firewallPaneToggle').classList.toggle('enabled', canElementPicker)
 
     let blocked = popupData.pageBlockedRequestCount,
@@ -1149,7 +1149,7 @@ const onHideTooltip = function() {
 })();
 
 uDom('#switch').on('click', toggleNetFilteringSwitch);
-uDom('#gotoZap').on('click', gotoZap);
+//uDom('#gotoZap').on('click', gotoZap);
 uDom('#gotoPick').on('click', gotoPick);
 uDom('#firewallPaneToggle').on('click', toggleFirewallPane);
 uDom('.hnSwitch').on('click', toggleHostnameSwitch);
