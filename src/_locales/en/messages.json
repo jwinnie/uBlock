@@ -112,7 +112,7 @@
     "description":"Tooltip for the element-zapper icon in the popup panel"
   },
   "popupTipPicker":{
-    "message":"Manually block an element",
+    "message":"Block an element on the page\n\nCtrl+click to temporarily block an element",
     "description":"Allows the user to manually select an element to be added to the blocking lists"
   },
   "popupTipLog":{

@@ -1149,8 +1149,13 @@ const onHideTooltip = function() {
 })();
 
 uDom('#switch').on('click', toggleNetFilteringSwitch);
-//uDom('#gotoZap').on('click', gotoZap);
-uDom('#gotoPick').on('click', gotoPick);
+uDom('#gotoPick').on('click', function(ev) {
+    if (ev.ctrlKey) {
+        gotoZap();
+    } else {
+        gotoPick();
+    }
+});
 uDom('#firewallPaneToggle').on('click', toggleFirewallPane);
 uDom('.hnSwitch').on('click', toggleHostnameSwitch);
 uDom('#saveRules').on('click', saveFirewallRules);
