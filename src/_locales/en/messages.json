@@ -884,8 +884,8 @@
     "description": "Firefox-specific: appears as 'uBlock₀ (off)'"
   },
   "docblockedPrompt1": {
-    "message": "uBlock Origin has prevented the following page from loading:",
-    "description": "English: uBlock₀ has prevented the following page from loading:"
+    "message": "This page has been blocked for security or privacy reasons.",
+    "description": "English: This page has been blocked for security or privacy reasons."
   },
   "docblockedPrompt2": {
     "message": "Because of the following filter",
