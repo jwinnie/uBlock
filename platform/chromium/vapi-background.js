@@ -26,7 +26,8 @@
 
 /******************************************************************************/
 
-(( ) => {
+{
+// >>>>> start of local scope
 
 /******************************************************************************/
 /******************************************************************************/
@@ -65,32 +66,58 @@ const noopFunc = function(){};
 
 /******************************************************************************/
 
-vAPI.app = (function() {
-    let version = manifest.version;
-    let match = /(\d+\.\d+\.\d+)(?:\.(\d+))?/.exec(version);
-    if ( match && match[2] ) {
-        let v = parseInt(match[2], 10);
-        version = match[1] + (v < 100 ? 'b' + v : 'rc' + (v - 100));
-    }
+vAPI.app = {
+    name: manifest.name.replace(/ dev\w+ build/, ''),
+    version: (( ) => {
+        let version = manifest.version;
+        const match = /(\d+\.\d+\.\d+)(?:\.(\d+))?/.exec(version);
+        if ( match && match[2] ) {
+            const v = parseInt(match[2], 10);
+            version = match[1] + (v < 100 ? 'b' + v : 'rc' + (v - 100));
+        }
+        return version;
+    })(),
 
-    return {
-        name: manifest.name.replace(/ dev\w+ build/, ''),
-        version: version
-    };
-})();
+    intFromVersion: function(s) {
+        const parts = s.match(/(?:^|\.|b|rc)\d+/g);
+        if ( parts === null ) { return 0; }
+        let vint = 0;
+        for ( let i = 0; i < 4; i++ ) {
+            const pstr = parts[i] || '';
+            let pint;
+            if ( pstr === '' ) {
+                pint = 0;
+            } else if ( pstr.startsWith('.') || pstr.startsWith('b') ) {
+                pint = parseInt(pstr.slice(1), 10);
+            } else if ( pstr.startsWith('rc') ) {
+                pint = parseInt(pstr.slice(2), 10) + 100;
+            } else {
+                pint = parseInt(pstr, 10);
+            }
+            vint = vint * 1000 + pint;
+        }
+        return vint;
+    },
 
-/******************************************************************************/
-
-vAPI.app.restart = function() {
-    chrome.runtime.reload();
+    restart: function() {
+        browser.runtime.reload();
+    },
 };
+
+// https://github.com/uBlockOrigin/uBlock-issues/issues/717
+//   Prevent the extensions from being restarted mid-session.
+browser.runtime.onUpdateAvailable.addListener(details => {
+    const toInt = vAPI.app.intFromVersion;
+    if ( toInt(details.version) > toInt(vAPI.app.version) ) { return; }
+    browser.runtime.reload();
+});
 
 /******************************************************************************/
 /******************************************************************************/
 
 // chrome.storage.local.get(null, function(bin){ console.debug('%o', bin); });
 
-vAPI.storage = chrome.storage.local;
+vAPI.storage = browser.storage.local;
 
 /******************************************************************************/
 /******************************************************************************/
@@ -217,7 +244,7 @@ vAPI.browserSettings = (function() {
         },
 
         set: function(details) {
-            for ( var setting in details ) {
+            for ( const setting in details ) {
                 if ( details.hasOwnProperty(setting) === false ) {
                     continue;
                 }
@@ -383,11 +410,11 @@ vAPI.Tabs = class {
 
     // Properties of the details object:
     // - url: 'URL',    => the address that will be opened
-    // - index: -1,     => undefined: end of the list, -1: following tab, or
-    //                     after index
-    // - active: false, => opens the tab in background - true and undefined:
-    //                     foreground
-    // - popup: true    => open in a new window
+    // - index: -1,     => undefined: end of the list, -1: following tab,
+    //                     or after index
+    // - active: false, => opens the tab... in background: true,
+    //                     foreground: undefined
+    // - popup: 'popup' => open in a new window
 
     create(url, details) {
         if ( details.active === undefined ) {
@@ -439,10 +466,10 @@ vAPI.Tabs = class {
         // For some reasons, some platforms do not honor the left,top
         // position when specified. I found that further calling
         // windows.update again with the same position _may_ help.
-        if ( details.popup === true && browser.windows instanceof Object ) {
+        if ( details.popup !== undefined && browser.windows instanceof Object ) {
             const createDetails = {
                 url: details.url,
-                type: 'popup',
+                type: details.popup,
             };
             if ( details.box instanceof Object ) {
                 Object.assign(createDetails, details.box);
@@ -806,72 +833,96 @@ chrome.browserAction.onClicked.addListener(function(tab) {
 /******************************************************************************/
 /******************************************************************************/
 
+// https://github.com/uBlockOrigin/uBlock-issues/issues/710
+//   uBO uses only ports to communicate with its auxiliary pages and
+//   content scripts. Whether a message can trigger a privileged operation is
+//   decided based on whether the port from which a message is received is
+//   privileged, which is a status evaluated once, at port connection time.
+
 vAPI.messaging = {
     ports: new Map(),
-    listeners: {},
+    listeners: new Map(),
     defaultHandler: null,
+    PRIVILEGED_URL: vAPI.getURL(''),
     NOOPFUNC: noopFunc,
-    UNHANDLED: 'vAPI.messaging.notHandled'
-};
+    UNHANDLED: 'vAPI.messaging.notHandled',
 
-/******************************************************************************/
+    listen: function(details) {
+        this.listeners.set(details.name, {
+            fn: details.listener,
+            privileged: details.privileged === true
+        });
+    },
 
-vAPI.messaging.listen = function(listenerName, callback) {
-    this.listeners[listenerName] = callback;
-};
+    onPortDisconnect: function(port) {
+        this.ports.delete(port.name);
+    },
 
-/******************************************************************************/
+    onPortConnect: function(port) {
+        port.onDisconnect.addListener(
+            port => this.onPortDisconnect(port)
+        );
+        port.onMessage.addListener(
+            (request, port) => this.onPortMessage(request, port)
+        );
+        this.ports.set(port.name, {
+            port,
+            privileged: port.sender.url.startsWith(this.PRIVILEGED_URL)
+        });
+    },
 
-vAPI.messaging.onPortMessage = (function() {
-    var messaging = vAPI.messaging;
+    setup: function(defaultHandler) {
+        if ( this.defaultHandler !== null ) { return; }
 
-    // Use a wrapper to avoid closure and to allow reuse.
-    var CallbackWrapper = function(port, request) {
-        this.callback = this.proxy.bind(this); // bind once
-        this.init(port, request);
-    };
+        if ( typeof defaultHandler !== 'function' ) {
+            defaultHandler = function() {
+                return this.UNHANDLED;
+            };
+        }
+        this.defaultHandler = defaultHandler;
 
-    CallbackWrapper.prototype = {
-        init: function(port, request) {
-            this.port = port;
-            this.request = request;
-            return this;
-        },
-        proxy: function(response) {
-            // https://github.com/chrisaljoudi/uBlock/issues/383
-            if ( messaging.ports.has(this.port.name) ) {
-                this.port.postMessage({
-                    auxProcessId: this.request.auxProcessId,
-                    channelName: this.request.channelName,
-                    msg: response !== undefined ? response : null
-                });
+        browser.runtime.onConnect.addListener(
+            port => this.onPortConnect(port)
+        );
+
+        // https://bugzilla.mozilla.org/show_bug.cgi?id=1392067
+        //   Workaround: manually remove ports matching removed tab.
+        if (
+            vAPI.webextFlavor.soup.has('firefox') &&
+            vAPI.webextFlavor.major < 61
+        ) {
+            browser.tabs.onRemoved.addListener(tabId => {
+                for ( const { port } of this.ports.values() ) {
+                    const tab = port.sender && port.sender.tab;
+                    if ( !tab ) { continue; }
+                    if ( tab.id === tabId ) {
+                        this.onPortDisconnect(port);
+                    }
+                }
+            });
+        }
+    },
+
+    broadcast: function(message) {
+        const messageWrapper = { broadcast: true, msg: message };
+        for ( const { port } of this.ports.values() ) {
+            try {
+                port.postMessage(messageWrapper);
+            } catch(ex) {
+                this.ports.delete(port.name);
             }
-            // Mark for reuse
-            this.port = this.request = null;
-            callbackWrapperJunkyard.push(this);
         }
-    };
+    },
 
-    var callbackWrapperJunkyard = [];
-
-    var callbackWrapperFactory = function(port, request) {
-        var wrapper = callbackWrapperJunkyard.pop();
-        if ( wrapper ) {
-            return wrapper.init(port, request);
-        }
-        return new CallbackWrapper(port, request);
-    };
-
-    var toFramework = function(request, port, callback) {
-        var sender = port && port.sender;
+    onFrameworkMessage: function(request, port, callback) {
+        const sender = port && port.sender;
         if ( !sender ) { return; }
-        var tabId = sender.tab && sender.tab.id || undefined;
-        var msg = request.msg,
-            toPort;
+        const tabId = sender.tab && sender.tab.id || undefined;
+        const msg = request.msg;
         switch ( msg.what ) {
         case 'connectionAccepted':
-        case 'connectionRefused':
-            toPort = messaging.ports.get(msg.fromToken);
+        case 'connectionRefused': {
+            const { port: toPort } = this.ports.get(msg.fromToken);
             if ( toPort !== undefined ) {
                 msg.tabId = tabId;
                 toPort.postMessage(request);
@@ -880,16 +931,17 @@ vAPI.messaging.onPortMessage = (function() {
                 port.postMessage(request);
             }
             break;
+        }
         case 'connectionRequested':
             msg.tabId = tabId;
-            for ( toPort of messaging.ports.values() ) {
+            for ( const { port: toPort } of this.ports.values() ) {
                 toPort.postMessage(request);
             }
             break;
         case 'connectionBroken':
         case 'connectionCheck':
-        case 'connectionMessage':
-            toPort = messaging.ports.get(
+        case 'connectionMessage': {
+            const { port: toPort } = this.ports.get(
                 port.name === msg.fromToken ? msg.toToken : msg.fromToken
             );
             if ( toPort !== undefined ) {
@@ -900,9 +952,10 @@ vAPI.messaging.onPortMessage = (function() {
                 port.postMessage(request);
             }
             break;
+        }
         case 'userCSS':
             if ( tabId === undefined ) { break; }
-            var details = {
+            const details = {
                 code: undefined,
                 frameId: sender.frameId,
                 matchAboutBlank: true
@@ -913,25 +966,24 @@ vAPI.messaging.onPortMessage = (function() {
             if ( msg.add ) {
                 details.runAt = 'document_start';
             }
-            var cssText;
-            var countdown = 0;
-            var countdownHandler = function() {
+            let countdown = 0;
+            const countdownHandler = function() {
                 void chrome.runtime.lastError;
                 countdown -= 1;
                 if ( countdown === 0 && typeof callback === 'function' ) {
                     callback();
                 }
             };
-            for ( cssText of msg.add ) {
+            for ( const cssText of msg.add ) {
                 countdown += 1;
                 details.code = cssText;
-                chrome.tabs.insertCSS(tabId, details, countdownHandler);
+                browser.tabs.insertCSS(tabId, details, countdownHandler);
             }
             if ( typeof chrome.tabs.removeCSS === 'function' ) {
-                for ( cssText of msg.remove ) {
+                for ( const cssText of msg.remove ) {
                     countdown += 1;
                     details.code = cssText;
-                    chrome.tabs.removeCSS(tabId, details, countdownHandler);
+                    browser.tabs.removeCSS(tabId, details, countdownHandler);
                 }
             }
             if ( countdown === 0 && typeof callback === 'function' ) {
@@ -939,100 +991,87 @@ vAPI.messaging.onPortMessage = (function() {
             }
             break;
         }
-    };
+    },
 
-    // https://bugzilla.mozilla.org/show_bug.cgi?id=1392067
-    //   Workaround: manually remove ports matching removed tab.
-    chrome.tabs.onRemoved.addListener(function(tabId) {
-        for ( var port of messaging.ports.values() ) {
-            var tab = port.sender && port.sender.tab;
-            if ( !tab ) { continue; }
-            if ( tab.id === tabId ) {
-                vAPI.messaging.onPortDisconnect(port);
-            }
+    // Use a wrapper to avoid closure and to allow reuse.
+    CallbackWrapper: class {
+        constructor(messaging, port, request) {
+            this.messaging = messaging;
+            this.callback = this.proxy.bind(this); // bind once
+            this.init(port, request);
         }
-    });
+        init(port, request) {
+            this.port = port;
+            this.request = request;
+            return this;
+        }
+        proxy(response) {
+            // https://github.com/chrisaljoudi/uBlock/issues/383
+            if ( this.messaging.ports.has(this.port.name) ) {
+                this.port.postMessage({
+                    auxProcessId: this.request.auxProcessId,
+                    channelName: this.request.channelName,
+                    msg: response !== undefined ? response : null
+                });
+            }
+            // Store for reuse
+            this.port = this.request = null;
+            this.messaging.callbackWrapperJunkyard.push(this);
+        }
+    },
 
-    return function(request, port) {
+    callbackWrapperJunkyard: [],
+
+    callbackWrapperFactory: function(port, request) {
+        return this.callbackWrapperJunkyard.length !== 0
+            ? this.callbackWrapperJunkyard.pop().init(port, request)
+            : new this.CallbackWrapper(this, port, request);
+    },
+
+    onPortMessage: function(request, port) {
         // prepare response
-        var callback = this.NOOPFUNC;
+        let callback = this.NOOPFUNC;
         if ( request.auxProcessId !== undefined ) {
-            callback = callbackWrapperFactory(port, request).callback;
+            callback = this.callbackWrapperFactory(port, request).callback;
         }
 
         // Content process to main process: framework handler.
         if ( request.channelName === 'vapi' ) {
-            toFramework(request, port, callback);
+            this.onFrameworkMessage(request, port, callback);
             return;
         }
 
         // Auxiliary process to main process: specific handler
-        var r = this.UNHANDLED,
-            listener = this.listeners[request.channelName];
-        if ( typeof listener === 'function' ) {
-            r = listener(request.msg, port.sender, callback);
+        const fromDetails = this.ports.get(port.name);
+        if ( fromDetails === undefined ) { return; }
+
+        const listenerDetails = this.listeners.get(request.channelName);
+        let r = this.UNHANDLED;
+        if (
+            (listenerDetails !== undefined) &&
+            (listenerDetails.privileged === false || fromDetails.privileged)
+            
+        ) {
+            r = listenerDetails.fn(request.msg, port.sender, callback);
         }
         if ( r !== this.UNHANDLED ) { return; }
 
         // Auxiliary process to main process: default handler
-        r = this.defaultHandler(request.msg, port.sender, callback);
-        if ( r !== this.UNHANDLED ) { return; }
+        if ( fromDetails.privileged ) {
+            r = this.defaultHandler(request.msg, port.sender, callback);
+            if ( r !== this.UNHANDLED ) { return; }
+        }
 
         // Auxiliary process to main process: no handler
-        console.error(
-            'vAPI.messaging.onPortMessage > unhandled request: %o',
+        log.info(
+            `vAPI.messaging.onPortMessage > unhandled request: ${JSON.stringify(request.msg)}`,
             request
         );
 
         // Need to callback anyways in case caller expected an answer, or
         // else there is a memory leak on caller's side
         callback();
-    }.bind(vAPI.messaging);
-})();
-
-/******************************************************************************/
-
-vAPI.messaging.onPortDisconnect = function(port) {
-    port.onDisconnect.removeListener(this.onPortDisconnect);
-    port.onMessage.removeListener(this.onPortMessage);
-    this.ports.delete(port.name);
-}.bind(vAPI.messaging);
-
-/******************************************************************************/
-
-vAPI.messaging.onPortConnect = function(port) {
-    port.onDisconnect.addListener(this.onPortDisconnect);
-    port.onMessage.addListener(this.onPortMessage);
-    this.ports.set(port.name, port);
-}.bind(vAPI.messaging);
-
-/******************************************************************************/
-
-vAPI.messaging.setup = function(defaultHandler) {
-    // Already setup?
-    if ( this.defaultHandler !== null ) {
-        return;
-    }
-
-    if ( typeof defaultHandler !== 'function' ) {
-        defaultHandler = function(){ return vAPI.messaging.UNHANDLED; };
-    }
-    this.defaultHandler = defaultHandler;
-
-    chrome.runtime.onConnect.addListener(this.onPortConnect);
-};
-
-/******************************************************************************/
-
-vAPI.messaging.broadcast = function(message) {
-    const messageWrapper = { broadcast: true, msg: message };
-    for ( const port of this.ports.values() ) {
-        try {
-            port.postMessage(messageWrapper);
-        } catch(ex) {
-            this.ports.delete(port.name);
-        }
-    }
+    },
 };
 
 /******************************************************************************/
@@ -1049,8 +1088,7 @@ vAPI.messaging.broadcast = function(message) {
 
 vAPI.warSecret = (( ) => {
     const generateSecret = ( ) => {
-        return Math.floor(Math.random() * 982451653 + 982451653).toString(36) +
-               Math.floor(Math.random() * 982451653 + 982451653).toString(36);
+        return Math.floor(Math.random() * 982451653 + 982451653).toString(36);
     };
 
     const root = vAPI.getURL('/');
@@ -1211,11 +1249,10 @@ vAPI.contextMenu = chrome.contextMenus && {
     onMustUpdate: function() {},
     setEntries: function(entries, callback) {
         entries = entries || [];
-        var n = Math.max(this._entries.length, entries.length),
-            oldEntryId, newEntry;
-        for ( var i = 0; i < n; i++ ) {
-            oldEntryId = this._entries[i];
-            newEntry = entries[i];
+        let n = Math.max(this._entries.length, entries.length);
+        for ( let i = 0; i < n; i++ ) {
+            const oldEntryId = this._entries[i];
+            const newEntry = entries[i];
             if ( oldEntryId && newEntry ) {
                 if ( newEntry.id !== oldEntryId ) {
                     chrome.contextMenus.remove(oldEntryId);
@@ -1266,8 +1303,8 @@ vAPI.commands = chrome.commands;
 
 vAPI.adminStorage = chrome.storage.managed && {
     getItem: function(key, callback) {
-        var onRead = function(store) {
-            var data;
+        const onRead = function(store) {
+            let data;
             if (
                 !chrome.runtime.lastError &&
                 typeof store === 'object' &&
@@ -1502,6 +1539,7 @@ vAPI.cloud = (function() {
 /******************************************************************************/
 /******************************************************************************/
 
-})();
+// <<<<< end of local scope
+}
 
 /******************************************************************************/
