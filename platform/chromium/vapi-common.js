@@ -1,7 +1,8 @@
 /*******************************************************************************
 
     uBlock Origin - a browser extension to block requests.
-    Copyright (C) 2014-present The uBlock Origin authors
+    Copyright (C) 2014-2015 The uBlock Origin authors
+    Copyright (C) 2014-present Raymond Hill
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -51,7 +52,7 @@ vAPI.webextFlavor = {
     soup.add('ublock').add('webext');
 
     // Whether this is a dev build.
-    if ( /^\d+\.\d+\.\d+\D/.test(chrome.runtime.getManifest().version) ) {
+    if ( /^\d+\.\d+\.\d+\D/.test(browser.runtime.getManifest().version) ) {
         soup.add('devbuild');
     }
 
@@ -115,6 +116,59 @@ vAPI.webextFlavor = {
 
 /******************************************************************************/
 
+{
+    const punycode = self.punycode;
+    const reCommonHostnameFromURL  = /^https?:\/\/([0-9a-z_][0-9a-z._-]*[0-9a-z])\//;
+    const reAuthorityFromURI       = /^(?:[^:\/?#]+:)?(\/\/[^\/?#]+)/;
+    const reHostFromNakedAuthority = /^[0-9a-z._-]+[0-9a-z]$/i;
+    const reHostFromAuthority      = /^(?:[^@]*@)?([^:]+)(?::\d*)?$/;
+    const reIPv6FromAuthority      = /^(?:[^@]*@)?(\[[0-9a-f:]+\])(?::\d*)?$/i;
+    const reMustNormalizeHostname  = /[^0-9a-z._-]/;
+
+    vAPI.hostnameFromURI = function(uri) {
+        let matches = reCommonHostnameFromURL.exec(uri);
+        if ( matches !== null ) { return matches[1]; }
+        matches = reAuthorityFromURI.exec(uri);
+        if ( matches === null ) { return ''; }
+        const authority = matches[1].slice(2);
+        if ( reHostFromNakedAuthority.test(authority) ) {
+            return authority.toLowerCase();
+        }
+        matches = reHostFromAuthority.exec(authority);
+        if ( matches === null ) {
+            matches = reIPv6FromAuthority.exec(authority);
+            if ( matches === null ) { return ''; }
+        }
+        let hostname = matches[1];
+        while ( hostname.endsWith('.') ) {
+            hostname = hostname.slice(0, -1);
+        }
+        if ( reMustNormalizeHostname.test(hostname) ) {
+            hostname = punycode.toASCII(hostname.toLowerCase());
+        }
+        return hostname;
+    };
+
+    const reHostnameFromNetworkURL =
+        /^(?:http|ws|ftp)s?:\/\/([0-9a-z_][0-9a-z._-]*[0-9a-z])\//;
+
+    vAPI.hostnameFromNetworkURL = function(url) {
+        const matches = reHostnameFromNetworkURL.exec(url);
+        return matches !== null ? matches[1] : '';
+    };
+
+    const psl = self.publicSuffixList;
+    const reIPAddressNaive = /^\d+\.\d+\.\d+\.\d+$|^\[[\da-zA-Z:]+\]$/;
+
+    vAPI.domainFromHostname = function(hostname) {
+        return reIPAddressNaive.test(hostname)
+            ? hostname
+            : psl.getDomain(hostname);
+    };
+}
+
+/******************************************************************************/
+
 vAPI.download = function(details) {
     if ( !details.url ) { return; }
     const a = document.createElement('a');
@@ -126,11 +180,11 @@ vAPI.download = function(details) {
 
 /******************************************************************************/
 
-vAPI.getURL = chrome.runtime.getURL;
+vAPI.getURL = browser.runtime.getURL;
 
 /******************************************************************************/
 
-vAPI.i18n = chrome.i18n.getMessage;
+vAPI.i18n = browser.i18n.getMessage;
 
 // http://www.w3.org/International/questions/qa-scripts#directions
 document.body.setAttribute(

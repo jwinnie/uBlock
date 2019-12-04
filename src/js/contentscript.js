@@ -148,6 +148,7 @@ vAPI.SafeAnimationFrame = function(callback) {
 
 vAPI.SafeAnimationFrame.prototype = {
     start: function(delay) {
+        if ( self.vAPI instanceof Object === false ) { return; }
         if ( delay === undefined ) {
             if ( this.fid === undefined ) {
                 this.fid = requestAnimationFrame(( ) => { this.onRAF(); } );
@@ -207,19 +208,15 @@ vAPI.SafeAnimationFrame.prototype = {
     let timer;
 
     const send = function() {
-        vAPI.messaging.send(
-            'scriptlets',
-            {
-                what: 'securityPolicyViolation',
-                type: 'net',
-                docURL: document.location.href,
-                violations: Array.from(newEvents),
-            },
-            response => {
-                if ( response === true ) { return; }
-                stop();
-            }
-        );
+        vAPI.messaging.send('scriptlets', {
+            what: 'securityPolicyViolation',
+            type: 'net',
+            docURL: document.location.href,
+            violations: Array.from(newEvents),
+        }).then(response => {
+            if ( response === true ) { return; }
+            stop();
+        });
         for ( const event of newEvents ) {
             allEvents.add(event);
         }
@@ -230,7 +227,7 @@ vAPI.SafeAnimationFrame.prototype = {
         if ( timer !== undefined ) { return; }
         timer = self.requestIdleCallback(
             ( ) => { timer = undefined; send(); },
-            { timeout: 2000 }
+            { timeout: 2063 }
         );
     };
 
@@ -270,7 +267,8 @@ vAPI.SafeAnimationFrame.prototype = {
 /******************************************************************************/
 /******************************************************************************/
 
-vAPI.domWatcher = (function() {
+vAPI.domWatcher = (( ) => {
+    vAPI.domMutationTime = Date.now();
 
     const addedNodeLists = [];
     const removedNodeLists = [];
@@ -285,9 +283,7 @@ vAPI.domWatcher = (function() {
         safeObserverHandlerTimer;
 
     const safeObserverHandler = function() {
-        //console.time('dom watcher/safe observer handler');
-        let i = addedNodeLists.length,
-            j = addedNodes.length;
+        let i = addedNodeLists.length;
         while ( i-- ) {
             const nodeList = addedNodeLists[i];
             let iNode = nodeList.length;
@@ -296,7 +292,7 @@ vAPI.domWatcher = (function() {
                 if ( node.nodeType !== 1 ) { continue; }
                 if ( ignoreTags.has(node.localName) ) { continue; }
                 if ( node.parentElement === null ) { continue; }
-                addedNodes[j++] = node;
+                addedNodes.push(node);
             }
         }
         addedNodeLists.length = 0;
@@ -311,19 +307,19 @@ vAPI.domWatcher = (function() {
             }
         }
         removedNodeLists.length = 0;
-        //console.timeEnd('dom watcher/safe observer handler');
         if ( addedNodes.length === 0 && removedNodes === false ) { return; }
         for ( const listener of getListenerIterator() ) {
-            listener.onDOMChanged(addedNodes, removedNodes);
+            try { listener.onDOMChanged(addedNodes, removedNodes); }
+            catch (ex) { }
         }
         addedNodes.length = 0;
         removedNodes = false;
+        vAPI.domMutationTime = Date.now();
     };
 
     // https://github.com/chrisaljoudi/uBlock/issues/205
     // Do not handle added node directly from within mutation observer.
     const observerHandler = function(mutations) {
-        //console.time('dom watcher/observer handler');
         let i = mutations.length;
         while ( i-- ) {
             const mutation = mutations[i];
@@ -341,7 +337,6 @@ vAPI.domWatcher = (function() {
                 addedNodeLists.length < 100 ? 1 : undefined
             );
         }
-        //console.timeEnd('dom watcher/observer handler');
     };
 
     const startMutationObserver = function() {
@@ -376,7 +371,8 @@ vAPI.domWatcher = (function() {
         listeners.push(listener);
         listenerIteratorDirty = true;
         if ( domIsReady !== true ) { return; }
-        listener.onDOMCreated();
+        try { listener.onDOMCreated(); }
+        catch (ex) { }
         startMutationObserver();
     };
 
@@ -404,7 +400,8 @@ vAPI.domWatcher = (function() {
     const start = function() {
         domIsReady = true;
         for ( const listener of getListenerIterator() ) {
-            listener.onDOMCreated();
+            try { listener.onDOMCreated(); }
+            catch (ex) { }
         }
         startMutationObserver();
     };
@@ -908,7 +905,8 @@ vAPI.domCollapser = (function() {
     // https://github.com/chrisaljoudi/uBlock/issues/174
     //   Do not remove fragment from src URL
     const onProcessed = function(response) {
-        if ( !response ) { // This happens if uBO is disabled or restarted.
+        // This happens if uBO is disabled or restarted.
+        if ( response instanceof Object === false ) {
             toCollapse.clear();
             return;
         }
@@ -964,29 +962,27 @@ vAPI.domCollapser = (function() {
         }
 
         if ( selectors.length !== 0 ) {
-            messaging.send(
-                'contentscript',
-                {
-                    what: 'cosmeticFiltersInjected',
-                    type: 'net',
-                    hostname: window.location.hostname,
-                    selectors: selectors
-                }
-            );
+            messaging.send('contentscript', {
+                what: 'cosmeticFiltersInjected',
+                type: 'net',
+                hostname: window.location.hostname,
+                selectors,
+            });
         }
     };
 
     const send = function() {
         processTimer = undefined;
         toCollapse.set(resquestIdGenerator, toProcess);
-        const msg = {
+        messaging.send('contentscript', {
             what: 'getCollapsibleBlockedRequests',
             id: resquestIdGenerator,
             frameURL: window.location.href,
             resources: toFilter,
-            hash: cachedBlockedSetHash
-        };
-        messaging.send('contentscript', msg, onProcessed);
+            hash: cachedBlockedSetHash,
+        }).then(response => {
+            onProcessed(response);
+        });
         toProcess = [];
         toFilter = [];
         resquestIdGenerator += 1;
@@ -1067,7 +1063,7 @@ vAPI.domCollapser = (function() {
 
     const domWatcherInterface = {
         onDOMCreated: function() {
-            if ( vAPI instanceof Object === false ) { return; }
+            if ( self.vAPI instanceof Object === false ) { return; }
             if ( vAPI.domCollapser instanceof Object === false ) {
                 if ( vAPI.domWatcher instanceof Object ) {
                     vAPI.domWatcher.removeListener(domWatcherInterface);
@@ -1256,18 +1252,16 @@ vAPI.domSurveyor = (function() {
         //console.info(`domSurveyor> Surveyed ${processed} nodes in ${(t1-t0).toFixed(2)} ms`);
         // Phase 2: Ask main process to lookup relevant cosmetic filters.
         if ( ids.length !== 0 || classes.length !== 0 ) {
-            messaging.send(
-                'contentscript',
-                {
-                    what: 'retrieveGenericCosmeticSelectors',
-                    hostname: hostname,
-                    ids: ids,
-                    classes: classes,
-                    exceptions: domFilterer.exceptions,
-                    cost: surveyCost
-                },
-                surveyPhase3
-            );
+            messaging.send('contentscript', {
+                what: 'retrieveGenericCosmeticSelectors',
+                hostname,
+                ids,
+                classes,
+                exceptions: domFilterer.exceptions,
+                cost: surveyCost,
+            }).then(response => {
+                surveyPhase3(response);
+            });
         } else {
             surveyPhase3(null);
         }
@@ -1349,11 +1343,11 @@ vAPI.domSurveyor = (function() {
     const domWatcherInterface = {
         onDOMCreated: function() {
             if (
-                vAPI instanceof Object === false ||
+                self.vAPI instanceof Object === false ||
                 vAPI.domSurveyor instanceof Object === false ||
                 vAPI.domFilterer instanceof Object === false
             ) {
-                if ( vAPI instanceof Object ) {
+                if ( self.vAPI instanceof Object ) {
                     if ( vAPI.domWatcher instanceof Object ) {
                         vAPI.domWatcher.removeListener(domWatcherInterface);
                     }
@@ -1406,12 +1400,11 @@ vAPI.bootstrap = (function() {
         // This can happen on Firefox. For instance:
         // https://github.com/gorhill/uBlock/issues/1893
         if ( window.location === null ) { return; }
-        if ( vAPI instanceof Object === false ) { return; }
+        if ( self.vAPI instanceof Object === false ) { return; }
 
-        vAPI.messaging.send(
-            'contentscript',
-            { what: 'shouldRenderNoscriptTags' }
-        );
+        vAPI.messaging.send('contentscript', {
+            what: 'shouldRenderNoscriptTags',
+        });
 
         if ( vAPI.domWatcher instanceof Object ) {
             vAPI.domWatcher.start();
@@ -1425,27 +1418,25 @@ vAPI.bootstrap = (function() {
             return;
         }
 
-        // To send mouse coordinates to main process, as the chrome API fails
-        // to provide the mouse position to context menu listeners.
-        // https://github.com/chrisaljoudi/uBlock/issues/1143
-        // Also, find a link under the mouse, to try to avoid confusing new tabs
-        // as nuisance popups.
-        // Ref.: https://developer.mozilla.org/en-US/docs/Web/Events/contextmenu
+        // To be used by element picker/zapper.
+        vAPI.mouseClick = { x: -1, y: -1 };
 
         const onMouseClick = function(ev) {
-            let elem = ev.target;
-            while ( elem !== null && elem.localName !== 'a' ) {
-                elem = elem.parentElement;
-            }
-            vAPI.messaging.send(
-                'contentscript',
-                {
-                    what: 'mouseClick',
-                    x: ev.clientX,
-                    y: ev.clientY,
-                    url: elem !== null && ev.isTrusted !== false ? elem.href : ''
-                }
-            );
+            if ( ev.isTrusted === false ) { return; }
+            vAPI.mouseClick.x = ev.clientX;
+            vAPI.mouseClick.y = ev.clientY;
+
+            // https://github.com/chrisaljoudi/uBlock/issues/1143
+            //   Find a link under the mouse, to try to avoid confusing new tabs
+            //   as nuisance popups.
+            // https://github.com/uBlockOrigin/uBlock-issues/issues/777
+            //   Mind that href may not be a string.
+            const elem = ev.target.closest('a[href]');
+            if ( elem === null || typeof elem.href !== 'string' ) { return; }
+            vAPI.messaging.send('contentscript', {
+                what: 'maybeGoodPopup',
+                url: elem.href || '',
+            });
         };
 
         document.addEventListener('mousedown', onMouseClick, true);
@@ -1463,7 +1454,8 @@ vAPI.bootstrap = (function() {
     //   to try bootstrapping again later.
 
     const bootstrapPhase1 = function(response) {
-        if ( response === null ) { return; }
+        if ( response instanceof Object === false ) { return; }
+
         vAPI.bootstrap = undefined;
 
         // cosmetic filtering engine aka 'cfe'
@@ -1546,16 +1538,14 @@ vAPI.bootstrap = (function() {
     };
 
     return function() {
-        vAPI.messaging.send(
-            'contentscript',
-            {
-                what: 'retrieveContentScriptParameters',
-                url: window.location.href,
-                isRootFrame: window === window.top,
-                charset: document.characterSet,
-            },
-            bootstrapPhase1
-        );
+        vAPI.messaging.send('contentscript', {
+            what: 'retrieveContentScriptParameters',
+            url: window.location.href,
+            isRootFrame: window === window.top,
+            charset: document.characterSet,
+        }).then(response => {
+            bootstrapPhase1(response);
+        });
     };
 })();
 

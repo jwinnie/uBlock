@@ -126,26 +126,26 @@ if (
     return;
 }
 
-var pickerRoot = document.getElementById(vAPI.sessionId);
+let pickerRoot = document.getElementById(vAPI.sessionId);
 if ( pickerRoot ) { return; }
 
-var pickerBody = null;
-var svgOcean = null;
-var svgIslands = null;
-var svgRoot = null;
-var dialog = null;
-var taCandidate = null;
+let pickerBody = null;
+let svgOcean = null;
+let svgIslands = null;
+let svgRoot = null;
+let dialog = null;
+let taCandidate = null;
 
-var netFilterCandidates = [];
-var cosmeticFilterCandidates = [];
+const netFilterCandidates = [];
+const cosmeticFilterCandidates = [];
 
-var targetElements = [];
-var candidateElements = [];
-var bestCandidateFilter = null;
+let targetElements = [];
+let candidateElements = [];
+let bestCandidateFilter = null;
 
-var lastNetFilterSession = window.location.host + window.location.pathname;
-var lastNetFilterHostname = '';
-var lastNetFilterUnion = '';
+const lastNetFilterSession = window.location.host + window.location.pathname;
+let lastNetFilterHostname = '';
+let lastNetFilterUnion = '';
 
 /******************************************************************************/
 
@@ -371,15 +371,12 @@ const netFilterFromUnion = function(toMergeURL, out) {
     ) {
         lastNetFilterHostname = parsedURL.host;
         lastNetFilterUnion = toMergeURL;
-        vAPI.messaging.send(
-            'elementPicker',
-            {
-                what: 'elementPickerEprom',
-                lastNetFilterSession: lastNetFilterSession,
-                lastNetFilterHostname: lastNetFilterHostname,
-                lastNetFilterUnion: lastNetFilterUnion
-            }
-        );
+        vAPI.messaging.send('elementPicker', {
+            what: 'elementPickerEprom',
+            lastNetFilterSession: lastNetFilterSession,
+            lastNetFilterHostname: lastNetFilterHostname,
+            lastNetFilterUnion: lastNetFilterUnion,
+        });
         return;
     }
 
@@ -398,15 +395,12 @@ const netFilterFromUnion = function(toMergeURL, out) {
     lastNetFilterUnion = mergedURL;
 
     // Remember across element picker sessions
-    vAPI.messaging.send(
-        'elementPicker',
-        {
-            what: 'elementPickerEprom',
-            lastNetFilterSession: lastNetFilterSession,
-            lastNetFilterHostname: lastNetFilterHostname,
-            lastNetFilterUnion: lastNetFilterUnion
-        }
-    );
+    vAPI.messaging.send('elementPicker', {
+        what: 'elementPickerEprom',
+        lastNetFilterSession: lastNetFilterSession,
+        lastNetFilterHostname: lastNetFilterHostname,
+        lastNetFilterUnion: lastNetFilterUnion,
+    });
 };
 
 /******************************************************************************/
@@ -854,7 +848,7 @@ const filterToDOMInterface = (( ) => {
         applied = false,
         previewing = false;
 
-    const queryAll = function(filter, callback) {
+    const queryAll = async function(filter, callback) {
         filter = filter.trim();
         if ( filter === lastFilter ) {
             callback(lastResultset);
@@ -883,15 +877,13 @@ const filterToDOMInterface = (( ) => {
             return;
         }
         // Procedural cosmetic filter
-        vAPI.messaging.send(
-            'elementPicker',
-            { what: 'compileCosmeticFilterSelector', selector: selector },
-            response => {
-                lastResultset = fromCompiledCosmeticFilter(response);
-                if ( previewing ) { apply(); }
-                callback(lastResultset);
-            }
-        );
+        const response = await vAPI.messaging.send('elementPicker', {
+            what: 'compileCosmeticFilterSelector',
+            selector,
+        });
+        lastResultset = fromCompiledCosmeticFilter(response);
+        if ( previewing ) { apply(); }
+        callback(lastResultset);
     };
 
     // https://github.com/gorhill/uBlock/issues/1629
@@ -1190,17 +1182,14 @@ const onDialogClicked = function(ev) {
         filterToDOMInterface.preview(false);
         userFilterFromCandidate((filter = undefined, isCosmetic = false) => {
             if ( filter === undefined ) { return; }
-            vAPI.messaging.send(
-                'elementPicker',
-                {
-                    what: 'createUserFilter',
-                    autoComment: true,
-                    filters: filter,
-                    origin: window.location.origin,
-                    pageDomain: window.location.hostname,
-                    killCache: isCosmetic === false,
-                }
-            );
+            vAPI.messaging.send('elementPicker', {
+                what: 'createUserFilter',
+                autoComment: true,
+                filters: filter,
+                origin: window.location.origin,
+                pageDomain: window.location.hostname,
+                killCache: isCosmetic === false,
+            });
             filterToDOMInterface.preview(rawFilterFromTextarea(), true);
             stopPicker();
         });
@@ -1528,6 +1517,65 @@ const onScrolled = function() {
 
 /******************************************************************************/
 
+const onStartMoving = (( ) => {
+    let mx0 = 0, my0 = 0;
+    let mx1 = 0, my1 = 0;
+    let r0 = 0, b0 = 0;
+    let rMax = 0, bMax = 0;
+    let timer;
+
+    const move = ( ) => {
+        timer = undefined;
+        let r1 = Math.min(Math.max(r0 - mx1 + mx0, 4), rMax);
+        let b1 = Math.min(Math.max(b0 - my1 + my0, 4), bMax);
+        dialog.style.setProperty('right', `${r1}px`, 'important');
+        dialog.style.setProperty('bottom', `${b1}px`, 'important');
+    };
+
+    const moveAsync = ev => {
+        if ( ev.isTrusted === false ) { return; }
+        ev.preventDefault();
+        ev.stopPropagation();
+        if ( timer !== undefined ) { return; }
+        mx1 = ev.pageX;
+        my1 = ev.pageY;
+        timer = self.requestAnimationFrame(move);
+    };
+
+    const stop = ev => {
+        if ( ev.isTrusted === false ) { return; }
+        if ( dialog.classList.contains('moving') === false ) { return; }
+        dialog.classList.remove('moving');
+        const pickerWin = pickerRoot.contentWindow;
+        pickerWin.removeEventListener('mousemove', moveAsync, { capture: true });
+        pickerWin.removeEventListener('mouseup', stop, { capture: true, once: true });
+        ev.preventDefault();
+        ev.stopPropagation();
+    };
+
+    return function(ev) {
+        if ( ev.isTrusted === false ) { return; }
+        const target = dialog.querySelector('#toolbar');
+        if ( ev.target !== target ) { return; }
+        if ( dialog.classList.contains('moving') ) { return; }
+        mx0 = ev.pageX; my0 = ev.pageY;
+        const pickerWin = pickerRoot.contentWindow;
+        const style = pickerWin.getComputedStyle(dialog);
+        r0 = parseInt(style.right, 10);
+        b0 = parseInt(style.bottom, 10);
+        const rect = dialog.getBoundingClientRect();
+        rMax = pickerBody.clientWidth - 4 - rect.width ;
+        bMax = pickerBody.clientHeight - 4 - rect.height;
+        dialog.classList.add('moving');
+        pickerWin.addEventListener('mousemove', moveAsync, { capture: true });
+        pickerWin.addEventListener('mouseup', stop, { capture: true, once: true });
+        ev.preventDefault();
+        ev.stopPropagation();
+    };
+})();
+
+/******************************************************************************/
+
 const pausePicker = function() {
     pickerBody.classList.add('paused');
     svgListening(false);
@@ -1564,20 +1612,11 @@ const stopPicker = function() {
     vAPI.domFilterer.unexcludeNode(pickerRoot);
 
     window.removeEventListener('scroll', onScrolled, true);
-    pickerRoot.contentWindow.removeEventListener('keydown', onKeyPressed, true);
-    taCandidate.removeEventListener('input', onCandidateChanged);
-    dialog.removeEventListener('click', onDialogClicked);
     svgListening(false);
-    svgRoot.removeEventListener('click', onSvgClicked);
-    svgRoot.removeEventListener('touchstart', onSvgTouchStartStop);
-    svgRoot.removeEventListener('touchend', onSvgTouchStartStop);
     pickerRoot.parentNode.removeChild(pickerRoot);
-    pickerRoot.removeEventListener('load', stopPicker);
-    pickerRoot =
-    pickerBody =
-    dialog =
-    svgRoot = svgOcean = svgIslands =
-    taCandidate = null;
+    pickerRoot = pickerBody =
+        svgRoot = svgOcean = svgIslands =
+        dialog = taCandidate = null;
 
     window.focus();
 };
@@ -1623,6 +1662,8 @@ const startPicker = function(details) {
     taCandidate = dialog.querySelector('textarea');
     taCandidate.addEventListener('input', onCandidateChanged);
 
+    dialog.querySelector('#toolbar').addEventListener('mousedown', onStartMoving);
+
     svgRoot = pickerBody.querySelector('svg');
     svgOcean = svgRoot.firstChild;
     svgIslands = svgRoot.lastChild;
@@ -1647,8 +1688,12 @@ const startPicker = function(details) {
     highlightElements([], true);
 
     // Try using mouse position
-    if ( details.clientX !== -1 ) {
-        if ( filtersFrom(details.clientX, details.clientY) !== 0 ) {
+    if (
+        details.mouse &&
+        typeof vAPI.mouseClick.x === 'number' &&
+        vAPI.mouseClick.x > 0
+    ) {
+        if ( filtersFrom(vAPI.mouseClick.x, vAPI.mouseClick.y) !== 0 ) {
             showDialog();
             return;
         }
@@ -1697,14 +1742,12 @@ const startPicker = function(details) {
 
 /******************************************************************************/
 
-const bootstrapPicker = function() {
-    pickerRoot.removeEventListener('load', bootstrapPicker);
+const bootstrapPicker = async function() {
     vAPI.shutdown.add(stopPicker);
-    vAPI.messaging.send(
-        'elementPicker',
-        { what: 'elementPickerArguments' },
-        startPicker
-    );
+    const details = await vAPI.messaging.send('elementPicker', {
+        what: 'elementPickerArguments',
+    });
+    startPicker(details);
 };
 
 /******************************************************************************/
@@ -1762,7 +1805,11 @@ vAPI.userStylesheet.apply();
 // https://github.com/gorhill/uBlock/issues/2060
 vAPI.domFilterer.excludeNode(pickerRoot);
 
-pickerRoot.addEventListener('load', bootstrapPicker);
+pickerRoot.addEventListener(
+    'load',
+    ( ) => { bootstrapPicker(); },
+    { once: true }
+);
 document.documentElement.appendChild(pickerRoot);
 
 /******************************************************************************/

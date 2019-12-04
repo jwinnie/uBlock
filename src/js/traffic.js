@@ -96,10 +96,15 @@ const onBeforeRequest = function(details) {
 
     // Not blocked
     if ( result !== 1 ) {
-        if ( details.parentFrameId !== -1 && details.type === 'sub_frame' ) {
+        if (
+            details.parentFrameId !== -1 &&
+            details.type === 'sub_frame' &&
+            details.aliasURL === undefined
+        ) {
             pageStore.setFrame(details.frameId, details.url);
         }
-        return;
+        if ( result !== 2 ) { return; }
+        return { cancel: false };
     }
 
     // Blocked
@@ -217,11 +222,10 @@ const onBeforeRootFrameRequest = function(fctxt) {
     if ( logData === undefined  ) { return; }
 
     // Blocked
-    const query = btoa(JSON.stringify({
+    const query = encodeURIComponent(JSON.stringify({
         url: requestURL,
         hn: requestHostname,
         dn: fctxt.getDomain() || requestHostname,
-        fc: logData.compiled,
         fs: logData.raw
     }));
 
@@ -844,14 +848,12 @@ const injectCSP = function(fctxt, pageStore, responseHeaders) {
 
     // Static filtering.
 
-    const logDataEntries = loggerEnabled ? [] : undefined;
-
-    µb.staticNetFilteringEngine.matchAndFetchData(
-        'csp',
-        fctxt.url,
-        cspSubsets,
-        logDataEntries
-    );
+    const staticDirectives =
+        µb.staticNetFilteringEngine.matchAndFetchData(fctxt, 'csp');
+    for ( const directive of staticDirectives ) {
+        if ( directive.result !== 1 ) { continue; }
+        cspSubsets.push(directive.getData('csp'));
+    }
 
     // URL filtering `allow` rules override static filtering.
     if (
@@ -893,10 +895,11 @@ const injectCSP = function(fctxt, pageStore, responseHeaders) {
     // <<<<<<<< All policies have been collected
 
     // Static CSP policies will be applied.
-    if ( logDataEntries !== undefined ) {
+
+    if ( loggerEnabled && staticDirectives.length !== 0 ) {
         fctxt.setRealm('network').setType('csp');
-        for ( const entry of logDataEntries ) {
-            fctxt.setFilter(entry).toLogger();
+        for ( const directive of staticDirectives ) {
+            fctxt.setFilter(directive.logData()).toLogger();
         }
     }
 
@@ -1072,7 +1075,7 @@ return {
                     [ 'blocking', 'requestBody' ]
                 );
             }
-            vAPI.net.unsuspend();
+            vAPI.net.unsuspend(true);
         };
     })(),
 
